@@ -82,7 +82,10 @@ class Regr:
         self, x, y, theta, alpha=0.001, num_iters=100, regular="ridge", lambda_=0.5
     ):
         """
-        Gradient descent with or without regularization
+        Gradient descent with or without regularization.
+        L1 = Lasso.
+        L2 = Ridge.
+        Otherwise, no regularization.
         """
         # initialize list of costs
         m = len(y)
