@@ -73,9 +73,9 @@ class Regr:
             y_hat = self.sigmoid(y_hat)
         return y_hat
     
-    def odds_to_class(self, y_hat, threshold = 0.5):
+    def probs_to_class(self, y_hat, threshold = 0.5):
         """
-        Converts logistic regression odds to actual binary classifiers
+        Converts logistic regression probabilities to actual binary classifiers
         """
         return np.array([1.0 if h >= threshold else 0.0 for h in y_hat])
     
