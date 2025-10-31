@@ -230,7 +230,53 @@ class ID3:
                     )
 
         return feature_dict
+    
+    def predict(self, sample: pd.Series, tree: dict):
+        """Predict target for a SINGLE INSTANCE/ROW"""
+        if not isinstance(tree, dict):
+            return tree
 
+        feature = next(iter(tree))
+        branches = tree[feature]
+        value = sample[feature]
+
+        for cond, subtree in branches.items():
+            if cond.startswith("<"):
+                threshold = float(cond.split("<")[1])
+                if value < threshold:
+                    return self.predict(sample, subtree)
+            elif cond.startswith(">="):
+                threshold = float(cond.split(">=")[1])
+                if value >= threshold:
+                    return self.predict(sample, subtree)
+            elif value == cond:
+                return self.predict(sample, subtree)
+
+        return None
+    
+    def predict_df(self, data: pd.DataFrame, tree: dict):
+        data["pred"] = data.apply(self.predict, axis=1, tree=tree)
+        return data
+    
+    def example_df_predict(self):
+        data = pd.DataFrame({
+        "Outlook": ["Sunny", "Sunny", "Overcast", "Rain", "Rain", "Rain", "Overcast",
+                    "Sunny", "Sunny", "Rain", "Sunny", "Overcast", "Overcast", "Rain"],
+        "Temperature": [85, 80, 83, 70, 68, 65, 64, 72, 69, 75, 75, 72, 81, 71],
+        "Humidity": [85, 90, 86, 96, 80, 70, 65, 95, 70, 80, 70, 91, 75, 91],
+        "Windy": [False, True, False, False, False, True, True,
+                False, False, False, True, True, False, True],
+        "Play": ["No", "No", "Yes", "Yes", "Yes", "No", "Yes",
+                "No", "Yes", "Yes", "Yes", "Yes", "Yes", "No"]
+    })
+        train_df, test_df = train_test_split(data, test_size=0.3, random_state=42) #reserve 30% of the data for testing
+        # train_df = x_train.insert(y_train)
+        # test_df = x_test.insert(y_test)
+        target = "Play"
+        features = [col for col in data.columns if col != target]
+        tree = self.train_id3(train_df, features, target)
+        with_preds_df = self.predict_df(test_df, tree)
+        print(with_preds_df)
 
 # MAIN
 def main(args):
