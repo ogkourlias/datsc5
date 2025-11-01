@@ -17,66 +17,82 @@ from sklearn.model_selection import train_test_split
 from collections import Counter
 import numpy.typing as npt
 import pandas as pd
+from sklearn.base import ClassifierMixin, BaseEstimator
 
 # CLASSES
-class NaiveBayes:
-    """Guassian NaiveBayes class"""
+class NaiveBayes(BaseEstimator, ClassifierMixin):
+    """Gaussian Naive Bayes classifier"""
 
-    def __init__(self) -> None:
+    def __init__(self):
         pass
 
-    ### General ###
-    def prep_data(self, df, y_col):
+    def get_params(self, deep=True):
         """
-        Prepare data for regression, assuming the following:
-        1. All features in provided dataframe are used in model.
-        2. Features are not co-linear.
-        3. Y is known and provided (provide column name as string)
         """
-
-        # Initialize theta, theta[0] = intercept theta.
-        y = np.array(df[y_col])
-        df = df.drop(columns=[y_col])
-        x = np.concatenate([np.ones((df.shape[0], 1)), df.to_numpy()], axis=1)
-        return x, y
+        return {
+        }
     
-    def train_test_split(self, x, y):
-        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=42) #reserve 30% of the data for testing
-        return x_train, x_test, y_train, y_test
+    # def set_params(self, **params):
+    #     """
+    #     Set the parameters of this estimator. Returns self.
+    #     """
+    #     for key, value in params.items():
+    #         if not hasattr(self, key):
+    #             # still set it to allow new params if user provides them
+    #             setattr(self, key, value)
+    #         else:
+    #             setattr(self, key, value)
+    #     return self
 
-    def get_likelihoods(self, x_train, y_train):
-        labels = np.unique(y_train)
-        xs_by_lab = {lab: x_train[y_train == lab] for lab in labels}
-        mu = np.array([np.mean(xs_by_lab[label], axis=0) for label in labels])
-        sd = np.array([np.std(xs_by_lab[label], axis=0) for label in labels])
-        return mu, sd
+    def fit(self, X, y):
+        """Fit the Gaussian Naive Bayes model"""
+        X = np.array(X)
+        y = np.array(y)
+        self.labels_ = np.unique(y)
+        xs_by_lab = {lab: X[y == lab] for lab in self.labels_}
+        self.mu_ = np.array([np.mean(xs_by_lab[label], axis=0) for label in self.labels_])
+        self.sd_ = np.array([np.std(xs_by_lab[label], axis=0) for label in self.labels_])
+        priors_dict = Counter(y)
+        m = len(y)
+        self.priors_ = np.array([priors_dict[label] / m for label in self.labels_])
+        return self
 
-    def classify(self, x_test, labels, priors, mu, sd):
-        y_pred = np.zeros(len(x_test))
-        for i, x in enumerate(x_test):
+    def predict(self, X):
+        """Predict class labels for samples in X"""
+        X = np.array(X)
+        y_pred = np.zeros(len(X))
+        for i, x in enumerate(X):
             posteriors = []
-            for j, label in enumerate(labels):
-                sq_diff = (x - mu[j, :]) ** 2
-                norm_fac = 1 / np.sqrt(2 * np.pi * sd[j, :])
-                likelihoods = norm_fac * np.exp(-sq_diff / (2 * sd[j, :])**2)
-                prod = np.prod(likelihoods) * priors[j]
+            for j, label in enumerate(self.labels_):
+                sq_diff = (x - self.mu_[j, :]) ** 2
+                norm_fac = 1 / np.sqrt(2 * np.pi * self.sd_[j, :])
+                likelihoods = norm_fac * np.exp(-sq_diff / (2 * self.sd_[j, :])**2)
+                prod = np.prod(likelihoods) * self.priors_[j]
                 posteriors.append(prod)
-
-            index_max = np.argmax(posteriors)
-            y_pred[i] = labels[index_max]
+            y_pred[i] = self.labels_[np.argmax(posteriors)]
         return y_pred
 
-    def get_priors(self, y_train):
-        labels = np.unique(y_train)
-        m = len(y_train)
-        priors_dict = Counter(y_train)
-        priors = np.array([priors_dict[label] / m for label in labels])
-        return labels, priors
+    def score(self, X, y):
+        """Return accuracy of the classifier."""
+        return np.mean(self.predict(X) == y)
+
     
-class ID3:
+class ID3(ClassifierMixin, BaseEstimator):
     """ID3 Decision tree class"""
-    def __init__(self) -> None:
-        pass
+    def __init__(self, max_depth=4):
+        self.max_depth = max_depth
+        self.tree_ = None
+        self.features_ = None # X series/array
+        self.target_ = None # y series/array
+
+    def get_params(self, deep=True):
+        """
+        """
+        return {
+            "max_depth": self.max_depth,
+            "features_": self.features_,
+            "target_": self.target_
+        }
 
     def entropy(self, targets: npt.NDArray):
         """
@@ -277,6 +293,45 @@ class ID3:
         tree = self.train_id3(train_df, features, target)
         with_preds_df = self.predict_df(test_df, tree)
         print(with_preds_df)
+    
+    def fit(self, X, y):
+        """Fit the decision tree classifier."""
+        df = X.copy()
+        df["target"] = y
+        self.features_ = list(X.columns)
+        self.target_ = "target"
+        self.tree_ = self.train_id3(df, self.features_, self.target_, max_depth=self.max_depth)
+        return self
+
+    def predict(self, X):
+        """Predict target values for given DataFrame X."""
+        df = X.copy()
+        df["pred"] = df.apply(self._predict_row, axis=1, tree=self.tree_)
+        return df["pred"].values
+
+    def _predict_row(self, sample, tree):
+        """Recursive prediction for one sample."""
+        if not isinstance(tree, dict):
+            return tree
+        feature = next(iter(tree))
+        branches = tree[feature]
+        value = sample[feature]
+        for cond, subtree in branches.items():
+            if cond.startswith("<"):
+                threshold = float(cond.split("<")[1])
+                if value < threshold:
+                    return self._predict_row(sample, subtree)
+            elif cond.startswith(">="):
+                threshold = float(cond.split(">=")[1])
+                if value >= threshold:
+                    return self._predict_row(sample, subtree)
+            elif value == cond:
+                return self._predict_row(sample, subtree)
+        return None
+
+    def score(self, X, y):
+        """Return accuracy."""
+        return np.mean(self.predict(X) == y)
 
 # MAIN
 def main(args):
