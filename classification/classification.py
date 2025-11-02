@@ -86,13 +86,12 @@ class ID3(ClassifierMixin, BaseEstimator):
         self.target_ = None # y series/array
 
     def get_params(self, deep=True):
-        """
-        """
-        return {
-            "max_depth": self.max_depth,
-            "features_": self.features_,
-            "target_": self.target_
-        }
+        return {"max_depth": self.max_depth}
+    
+    def set_params(self, **params):
+        for key, value in params.items():
+            setattr(self, key, value)
+        return self
 
     def entropy(self, targets: npt.NDArray):
         """
